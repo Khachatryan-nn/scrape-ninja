@@ -51,7 +51,8 @@ Once you are on a URL and you have found the answer to the user's question, you 
 
 Use google search by set a sub-page like 'https://google.com/search?q=search' if applicable. Prefer to use Google. Only if the user provides a direct URL, go to that one. Do not make up links.
 
-If you asked for cookies, accept them to load the website.`
+If you asked for cookies, or there are any other pop-ups, close with cross or accept them to load the website.
+If you cannot naviagte through website, try to search in Google.`
 
 const click_prompt_template = `Here's the screenshot of the website you are on right now. You can click on links (marked in red rectangles in the screenshot) with the following format:{\"click\": \"Link text\"} or you can crawl to another URL if this one is incorrect.
 If you asked for cookies, accept them to load the website.

@@ -4,9 +4,15 @@ import google.generativeai as genai
 from time import sleep
 from urllib.parse import urlparse
 
+from prompts import *
+
 # Set API key and configure GenAI
 genai.api_key = st.secrets.google.API_KEY_2
 genai.configure(api_key=genai.api_key)
+
+# Load the database as string
+with open(".data/.data.json", "r") as f:
+    database = f.read()
 
 # Define generation config and safety settings
 generation_config = {
@@ -58,38 +64,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Define prompt templates
-prompt_templates = [
-    """Search the provided Venture company's website for contact information.
-Look for pages with titles or URLs containing keywords such as 'contact-us', 'contact', 'connect', 'connect-us', 'locations', or any other relevant terms that might indicate a page with contact information.
-Extract and return the following information in JSON format:
-- Company name
-- Email addresses
-- Phone numbers
-- Physical addresses
-- Contact forms (if available)""",
-    """Search the provided Venture company's website for information about the industries they invest in.
-Look for pages with titles or URLs containing keywords such as 'investment', 'industries','sectors', 'portfolio', or any other relevant terms that might indicate a page with investment information.
-Extract and return the industries the company invests in, in JSON format.
-If the information is not found on the company's website, search for relevant news articles or press releases that mention the company's investment industries.""",
-    """Search the provided Venture company's website for information about their funding series.
-Look for pages with titles or URLs containing keywords such as 'funding', 'investment','series', 'round', or any other relevant terms that might indicate a page with funding information.
-Extract and return the series of funding (e.g., Series A, Series B, etc.) and the count of each series if available, in JSON format.
-If the information is not found on the company's website, search for relevant news articles or press releases that mention the company's funding series.""",
-]
-
-conclusion_prompt = """Using the results from the previous three prompts, create a comprehensive JSON response that contains the following information:
-- Contact information:
-  - Email addresses
-  - Phone numbers
-  - Physical addresses
-  - Contact forms (if available)
-- Investment industries
-- Funding series:
-  - Series of funding (e.g., Series A, Series B, etc.)
-  - Count of each series (if available)
-Combine the extracted information into a single JSON response."""
-
 # Accept user input
 if prompt := st.chat_input("Venture company or website: "):
     extracted_name = extract_website_name(prompt)
@@ -130,6 +104,22 @@ if prompt := st.chat_input("Venture company or website: "):
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
             st.markdown(conclusion_response.text)
+
+    except Exception as e:
+        st.error(f"The ASSISTANT had an error: {e}")
+
+    # Return most similar ones
+    prompt = similarity_prompt.format(company_name, conclusion_response.text, database)
+
+    try:
+        similarity_response = model.generate_content(prompt,
+                                                     generation_config=generation_config,
+                                                     safety_settings=safety_settings,
+                                                     stream=False)
+
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            st.markdown(similarity_response.text)
 
     except Exception as e:
         st.error(f"The ASSISTANT had an error: {e}")
