@@ -10,9 +10,12 @@ puppeteer.use(StealthPlugin());
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY_1);
 const SLEEP_TIME = process.env.SLEEP_TIME || 5000;
+const urlRegex = /"url":\s*"([^"]+)"/;
+const { stdin, stdout } = process;
 const timeout = 5000;
 
-console.log(process.env.API_KEY_1)
+
+// // console.log(process.env.API_KEY_1)
 model_name = "gemini-1.5-pro-latest";
 
 // Safety settings for GenAI
@@ -50,7 +53,10 @@ Use google search by set a sub-page like 'https://google.com/search?q=search' if
 
 If you asked for cookies, accept them to load the website.`
 
-const click_prompt_template = "Here's the screenshot of the website you are on right now. You can click on links (marked in red rectangles in the screenshot) with the following format:{\"click\": \"Link text\"} or you can crawl to another URL if this one is incorrect. If you asked for cookies, accept them to load the website. If you find the answer to the user's question, you can respond normally."
+const click_prompt_template = `Here's the screenshot of the website you are on right now. You can click on links (marked in red rectangles in the screenshot) with the following format:{\"click\": \"Link text\"} or you can crawl to another URL if this one is incorrect.
+If you asked for cookies, accept them to load the website.
+If you find the answer to the user's question, respond strictly with the requested information, surely formatted in the JSON format.
+Do not provide any additional comments or information.`
 //END THERE
 
 function image_to_base64(path, mimeType) {
@@ -83,6 +89,27 @@ async function input( text ) {
     return the_prompt;
 }
 
+// Function to send message to python stdin
+function sendMessageToPython(message) {
+    const pythonProcess = spawn('python', ['main.py']);
+    pythonProcess.stdin.write(message);
+    pythonProcess.stdin.end();
+}
+
+// Function to receive message from Python stdout
+function receiveMessageFromPython() {
+    return new Promise(resolve => {
+        const pythonProcess = spawn('python', ['main.py']);
+        let output = '';
+        pythonProcess.stdout.on('data', data => {
+            output += data.toString().trim();
+        });
+        pythonProcess.on('close', () => {
+            resolve(output);
+        });
+    });
+}
+
 async function sleep( milliseconds ) {
     return await new Promise((r, _) => {
         setTimeout( () => {
@@ -92,7 +119,7 @@ async function sleep( milliseconds ) {
 }
 
 async function highlight_links( page ) {
-	console.log('Highlighting links...')
+	console.error('Highlighting links...')
 	await sleep(1000);
     try {
         await page.evaluate(() => {
@@ -103,7 +130,7 @@ async function highlight_links( page ) {
             });
         });
     } catch (e) {
-        console.log("highlight_links: Exception while removing old links: " + e);
+        console.error("highlight_links: Exception while removing old links: " + e);
     }
 
     try {
@@ -182,14 +209,14 @@ async function highlight_links( page ) {
                     }
                 }, e);
             } catch (e) {
-                console.log("highlight_links: Exception while highlighting link: " + e);
+                console.error("highlight_links: Exception while highlighting link: " + e);
             }
         } );
     } catch (e) {
-        console.log("highlight_links: Exception while getting links: " + e);
+        console.error("highlight_links: Exception while getting links: " + e);
     }
 	await sleep(1000);
-	console.log('Links highlighted')
+	console.error('Links highlighted')
 }
 
 async function waitForEvent(page, event) {
@@ -205,12 +232,25 @@ async function waitForEvent(page, event) {
 
 // Launch browser
 const launchBrowser = async () => {
-    const browser = await puppeteer.launch( {
-        headless: "false",
-        args: ['--no-sandbox'],
-    } );
-	return browser;
+    try {
+        return await puppeteer.launch( {
+            headless: "false",
+            args: ['--no-sandbox'],
+            handleSIGINT: true,
+            handleSIGTERM: true,
+            handleSIGHUP: true,
+            dumpio: true,
+            executablePath: process.env.CHROME_BIN || null,
+        } ).catch(e => {
+            console.error("launchBrowser: Exception while launching browser: " + e);
+            process.exit(1);
+        });
+    } catch (e) {
+        console.error("launchBrowser: Unhandled exception while launching browser: " + e);
+        process.exit(1);
+    }
 };
+
 
 // Initialize browser page
 const initPage = async (browser) => {
@@ -244,13 +284,13 @@ const init_model = async (model_name, safetySettings) => {
 
 // Ask user for input
 const user_input = async (message) => {
-	console.log('Gemini:', message)
-	return await input("You: ");
+	sendMessageToPython('Gemini:', message)
+	return await receiveMessageFromPython();
 }
 
 // Handle url statement
 const url_state = async (url, page) => {
-	console.log("Crawling " + url);
+	console.error("Crawling " + url);
 	await page.goto( url, {
 		waitUntil: "domcontentloaded",
 		timeout: timeout,
@@ -302,40 +342,40 @@ const url_screenshot_state = async (url, screenshot_taken, msg, base64_image, pa
 
 // Find elements loop
 const find_elements = async (elements, link_text) => {
-	let exact = null;
-	let partial = null;
+    let exact = null;
+    let partial = null;
 
-	for (const element of elements) {
-		try {
-			const attributeValue = await element.evaluate(el => el.getAttribute('gemini-link-text'));
+    for (const element of elements) {
+        try {
+            const textContent = await element.evaluate(el => el.textContent);
 
-			if (attributeValue != null && attributeValue.includes(link_text)) {
-				partial = element;
-			}
-			if (attributeValue != null && attributeValue === link_text) {
-				exact = element;
-			}
-		} catch (e) {
-			console.error("ERROR: Exception while finding elements", e.message);
-		}
-	}
+            if (textContent.includes(link_text)) {
+                partial = element;
+            }
+            if (textContent === link_text) {
+                exact = element;
+            }
+        } catch (e) {
+            console.error("ERROR: Exception while finding elements", e.message);
+        }
+    }
 
-	return [exact, partial];
+    return [exact, partial];
 }
-
 
 // Exact and partial statement
 const exact_and_partial_statement = async (exact, partial, page) => {
-	if (exact) {
+    if (exact) {
         elementToClick = exact;
     } else if (partial) {
         elementToClick = partial;
     } else {
-        throw new Error("Can't find link");
+        msg.push("ERROR: I was unable to find the link");
+        return;
     }
 
     const [response] = await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(e => console.log("Navigation timeout/error:", e.message)),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(e => console.error("Navigation timeout/error:", e.message)),
         elementToClick.click()
     ]);
 
@@ -356,17 +396,12 @@ const exact_and_partial_statement = async (exact, partial, page) => {
 }
 
 (async () => {
-    console.log( "###########################################" );
-    console.log( "# Gemini-Browsing by Unconventional Coding #" );
-    console.log( "###########################################\n" );
-
 	const browser = await launchBrowser();
     const page = await initPage(browser);
 	
 	let {model, messages} = await init_model(model_name, safetySettings);
-    
-    prompt = await user_input("How can I assist you today?");
-	console.log()
+
+    prompt = process.argv[2];
 	msg = [];
     msg.push(prompt);
 	
@@ -379,18 +414,16 @@ const exact_and_partial_statement = async (exact, partial, page) => {
 		
 		[url, screenshot_taken, msg, base64_image] = await url_screenshot_state(url, screenshot_taken, msg, base64_image, page);
 
-		console.log("Requesting to Gemini...");
 		await sleep(SLEEP_TIME / 2);
         [message_text, messages] = await ask_model(msg, messages);
-        console.log( "Gemini: " + message_text );
 		msg.push("Gemini: " + message_text);
+        console.error("Gemini: " + message_text);
 		
 		const regex = /{"click":\s*"([^"]+)"}/;
 		const match = message_text.match(regex);
 		if (match) {
 			await sleep(SLEEP_TIME / 2);
 			const link_text = match[1];
-			console.log("Clicking on " + link_text);
         
             try {
                 const elements = await page.$$('[gemini-link-text]');
@@ -408,23 +441,21 @@ const exact_and_partial_statement = async (exact, partial, page) => {
                     throw new Error("Can't find link");
                 }
             } catch (error) {
-                console.log("ERROR: Clicking failed", error);
+                console.error("ERROR: Clicking failed", error);
 			
                 msg.push("ERROR: I was unable to click that element");
             }
 
             continue;
-        } else if (message_text.indexOf('{"url": "') !== -1) {
-            let parts = message_text.split('{"url": "');
-            parts = parts[1].split('"}');
-            url = parts[0];
+        } else if (message_text.match(urlRegex)) {
+            let parts = message_text.match(urlRegex);
+            url = parts[1];
         
             continue;
+        } else {
+            console.log(message_text);
         }
 
-        const prompt = await input("You: ");
-        console.log();
-
-        msg.push(prompt);
+        process.exit(0);
     }
 })();

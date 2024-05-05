@@ -1,59 +1,74 @@
 import subprocess
-import tempfile
-import os
 import streamlit as st
-from vision_scraper import *
 
-API_KEY = st.secrets.google.API_KEY_1
+from time import sleep
+from urllib.parse import urlparse
+
+def extract_website_name(input_string):
+    parsed_url = urlparse(input_string)
+    website_name = parsed_url.netloc.split(".")[0]
+    if website_name == "www":
+        website_name = parsed_url.netloc.split(".")[1]
+    return website_name
 
 st.set_page_config(
-   page_title="Ex-stream-ly Cool App",
-   page_icon="🧊",
+   page_title="Ninja Scraper",
+   page_icon="🕸️",
    layout="wide",
    initial_sidebar_state="expanded",
 )
 
-chat_panel = st.container()
-input_field = st.text_input("Type a message:")
+# Set a default model
+if "genai_model" not in st.session_state:
+    st.session_state["genai_model"] = "gemini-1.5-pro-latest"
 
-conversation_history = []
+st.session_state['messages'] = [{'role': 'assistant', 'content': 'Hello, welcome to the Ninja Scraper! How can I assist you today?'}]
 
-def generate_response(input_text):
-    # Placeholder response, you can replace this with your actual response generation logic
-    response = "This is a generated response based on your input: " + input_text
-    return response
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-def update_conversation_history(input_text, response):
-    conversation_history.append({"user": input_text, "assistant": response})
-    chat_panel.write("User: " + input_text + "\nAssistant: " + response + "\n")
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-def run_web_agent(input_text):
-    process = subprocess.Popen(['node', 'web_agent.js'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    input_text_bytes = input_text.encode()
-    stdout, stderr = process.communicate(input=input_text_bytes)
+prompt_templates = [
+    """Search provided Venture company for contact information.
+    Look for pages with titles or URLs containing keywords such as 'contact-us', 'contact', 'connect', 'connect-us', 'locations', or any other relevant terms that might indicate a page with contact information.
+    If found out what requested, respond strictly with the requested information, surely formatted in the JSON format.
+    Extract and return any email addresses, phone numbers, physical addresses, or contact forms found on these pages.""",
 
-    if stderr:
-        return "Error: " + stderr.decode()
-    else:
-        return stdout.decode()
+    """Search provided Venture company for information about the industries they invest in.
+    Look for pages with titles or URLs containing keywords such as 'investment', 'industries', 'sectors', 'portfolio', or any other relevant terms that might indicate a page with investment information.
+    If found out what requested, respond strictly with the requested information, surely formatted in the JSON format.
+    Extract and return the industries the company invests in. If the information is not found on the company's website, search for relevant news articles or press releases that mention the company's investment industries.""",
 
-# Create a button to submit the input
-submit_button = st.button("Send")
+    """Search provided Venture company for information about their funding series.
+    Look for pages with titles or URLs containing keywords such as 'funding', 'investment', 'series', 'round', or any other relevant terms that might indicate a page with funding information.
+    Extract and return the series of funding (e.g., Series A, Series B, etc.) and the count of each series if available.
+    If found out what requested, respond strictly with the requested information, surely formatted in the JSON format.
+    If the information is not found on the company's website, search for relevant news articles or press releases that mention the company's funding series."""
+]
 
-# Handle the input submission
-if submit_button:
-    input_text = input_field
+# Accept user input
+if prompt := st.chat_input("Venture company or website: "):
+    extracted_name = extract_website_name(prompt)
+    company_name = extracted_name if extracted_name else prompt
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    # Display user message in chat message container
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    for template in prompt_templates:
 
-    # Run the web agent and capture its output
-    web_agent_output = run_web_agent(input_text)
-
-    # Update the conversation history
-    update_conversation_history(input_text, web_agent_output)
-
-    # Clear the input field
-    input_field = ""
-
-# Display the conversation history
-chat_panel.write("Conversation History:")
-for message in conversation_history:
-    chat_panel.write("User: " + message["user"] + "\nAssistant: " + message["assistant"] + "\n")
+        prompt = f"Company:{company_name}. {template}"
+        # Display assistant response in chat message container
+        process = subprocess.Popen(['node', 'web_agent.js', prompt], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        output, error = process.communicate()
+        while process.poll() is None:
+            sleep(0.1)
+        with st.chat_message("assistant"):
+            stream = output.decode().strip()
+            response = st.write(stream)
+            st.session_state.messages.append({"role": "assistant", "content": response})
