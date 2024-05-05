@@ -7,7 +7,6 @@ from PIL import Image
 from dotenv import load_dotenv
 from time import sleep
 
-# from google.cloud import aiplatform
 import google.generativeai as genai
 
 load_dotenv()
