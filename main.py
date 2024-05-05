@@ -28,11 +28,14 @@ def update_conversation_history(input_text, response):
     chat_panel.write("User: " + input_text + "\nAssistant: " + response + "\n")
 
 def run_web_agent(input_text):
-    with open(".tmpwr.txt", "w") as f:
-        process = subprocess.run(
-            ["node", "web_agent.js", input_text]
-        )
-    return "Message"
+    process = subprocess.Popen(['node', 'web_agent.js'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    input_text_bytes = input_text.encode()
+    stdout, stderr = process.communicate(input=input_text_bytes)
+
+    if stderr:
+        return "Error: " + stderr.decode()
+    else:
+        return stdout.decode()
 
 # Create a button to submit the input
 submit_button = st.button("Send")
@@ -43,9 +46,6 @@ if submit_button:
 
     # Run the web agent and capture its output
     web_agent_output = run_web_agent(input_text)
-
-    # Generate a response based on the input
-    # response = generate_response(input_text)
 
     # Update the conversation history
     update_conversation_history(input_text, web_agent_output)
