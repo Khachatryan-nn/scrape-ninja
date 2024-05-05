@@ -232,25 +232,12 @@ async function waitForEvent(page, event) {
 
 // Launch browser
 const launchBrowser = async () => {
-    try {
-        return await puppeteer.launch( {
-            headless: "false",
-            args: ['--no-sandbox'],
-            handleSIGINT: true,
-            handleSIGTERM: true,
-            handleSIGHUP: true,
-            dumpio: true,
-            executablePath: process.env.CHROME_BIN || null,
-        } ).catch(e => {
-            console.error("launchBrowser: Exception while launching browser: " + e);
-            process.exit(1);
-        });
-    } catch (e) {
-        console.error("launchBrowser: Unhandled exception while launching browser: " + e);
-        process.exit(1);
-    }
+    const browser = await puppeteer.launch( {
+        headless: "false",
+        args: ['--no-sandbox'],
+    } );
+	return browser;
 };
-
 
 // Initialize browser page
 const initPage = async (browser) => {
