@@ -1,46 +1,56 @@
+import subprocess
+import tempfile
+import os
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from vision_scraper import *
 
-# Load your LLM chatbot model
-# model_name = "meta-llama/Meta-Llama-3-8B"
-# model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
-# tokenizer = AutoTokenizer.from_pretrained(model_name)
+API_KEY = st.secrets.google.API_KEY_1
 
-# Create a chat panel in the center of the page
+st.set_page_config(
+   page_title="Ex-stream-ly Cool App",
+   page_icon="🧊",
+   layout="wide",
+   initial_sidebar_state="expanded",
+)
+
 chat_panel = st.container()
-
-# Create an input field at the bottom of the page
 input_field = st.text_input("Type a message:")
 
-# Initialize the conversation history
 conversation_history = []
 
-# Define a function to generate a response from the model
 def generate_response(input_text):
-#     inputs = tokenizer.encode_plus(input_text, 
-#                                     add_special_tokens=True, 
-#                                     max_length=1024, 
-#                                     return_attention_mask=True, 
-#                                     return_tensors='pt')
-#     outputs = model(inputs['input_ids'], attention_mask=inputs['attention_mask'])
-#     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Placeholder response, you can replace this with your actual response generation logic
+    response = "This is a generated response based on your input: " + input_text
     return response
 
-# # Define a function to update the conversation history
 def update_conversation_history(input_text, response):
-#     conversation_history.append({"user": input_text, "assistant": response})
+    conversation_history.append({"user": input_text, "assistant": response})
     chat_panel.write("User: " + input_text + "\nAssistant: " + response + "\n")
+
+def run_web_agent(input_text):
+    with open(".tmpwr.txt", "w") as f:
+        process = subprocess.run(
+            ["node", "web_agent.js", input_text]
+        )
+    return "Message"
 
 # Create a button to submit the input
 submit_button = st.button("Send")
 
 # Handle the input submission
 if submit_button:
-    # input_text = input_field.value
     input_text = input_field
+
+    # Run the web agent and capture its output
+    web_agent_output = run_web_agent(input_text)
+
+    # Generate a response based on the input
     # response = generate_response(input_text)
-    response = "Hello!"
-    update_conversation_history(input_text, response)
+
+    # Update the conversation history
+    update_conversation_history(input_text, web_agent_output)
+
+    # Clear the input field
     input_field = ""
 
 # Display the conversation history
