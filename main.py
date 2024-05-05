@@ -106,13 +106,14 @@ model_responses = []
 if prompt := st.chat_input("Venture company or website: "):
     extracted_name = extract_website_name(prompt)
     company_name = extracted_name if extracted_name else prompt
+    
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
     # Display user message in chat message container
     with st.chat_message("user"):
         st.markdown(prompt)
-    for template in prompt_templates:
 
+    for template in prompt_templates[0:1]:
         prompt = f"Company:{company_name}. {template}"
         # Display assistant response in chat message container
         process = subprocess.Popen(['node', 'web_agent.js', prompt], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -122,21 +123,21 @@ if prompt := st.chat_input("Venture company or website: "):
         with st.chat_message("assistant"):
             stream = output.decode().strip()
             response = st.write(stream)
+            model_responses.append(stream)
             st.session_state.messages.append({"role": "assistant", "content": response})
-            model_responses.append(response)
 
     # Make conclusion
     prompt = f"""{conclusion_prompt}
     {'    '.join(model_responses)}"""
+    try:
+        conclusion_response = model.generate_content(prompt,
+                                                     generation_config=generation_config,
+                                                     safety_settings=safety_settings,
+                                                     stream=False)
 
-    conclusion_response = model.generate_content(prompt,
-                                                 generation_config=generation_config,
-                                                 safety_settings=safety_settings,
-                                                 max_output_tokens=8192,
-                                                 stream=True)
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            st.markdown(conclusion_response.text)
 
-    # Display assistant response in chat message container
-    with st.chat_message("assistant"):
-        for chank in conclusion_response:
-            st.markdown(chank)
-    
+    except Exception as e:
+        st.error(f"The ASSISTANT had an error: {e}")
